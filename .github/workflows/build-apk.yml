@@ -1,0 +1,97 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Check site address
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "::error::SITE_URL is not set (Settings > Secrets and variables > Actions > Variables)"
+            exit 1
+          fi
+
+      - name: Download site files into www
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: node scripts/build-www.js
+
+      - name: Install Capacitor and create the Android project
+        run: |
+          npm install --no-audit --no-fund --legacy-peer-deps
+          npx cap add android
+
+      - name: Patch Android project (camera permission, icon)
+        run: node scripts/patch-android.js
+
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign APK
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -e
+          mkdir -p dist
+          NEWKEY=0
+          if [ -z "$KEYSTORE_B64" ]; then
+            NEWKEY=1
+            KEYSTORE_PASSWORD="$(openssl rand -hex 12)"
+            KEY_ALIAS="parcel"
+            keytool -genkeypair -keystore dist/release.jks -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" -dname "CN=Parcel Office App"
+            base64 -w0 dist/release.jks > dist/KEYSTORE_B64.txt
+            printf 'KEYSTORE_PASSWORD=%s\nKEY_ALIAS=%s\n' "$KEYSTORE_PASSWORD" "$KEY_ALIAS" > dist/SECRETS_TO_SAVE.txt
+          else
+            echo "$KEYSTORE_B64" | base64 -d > dist/release.jks
+          fi
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          UNSIGNED="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          "$BT/zipalign" -p 4 "$UNSIGNED" dist/aligned.apk
+          "$BT/apksigner" sign --ks dist/release.jks --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" --key-pass "pass:$KEYSTORE_PASSWORD" \
+            --out dist/parcel-office.apk dist/aligned.apk
+          rm -f dist/aligned.apk dist/release.jks dist/parcel-office.apk.idsig
+          if [ "$NEWKEY" = "1" ]; then
+            echo "::warning::A new signing key was created. Download the SAVE-THIS-keystore artifact and store its values as repository secrets, otherwise future updates will not install over this one."
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: parcel-office-apk
+          path: dist/parcel-office.apk
+
+      - name: Upload new signing key (only when it was just created)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAVE-THIS-keystore
+          path: |
+            dist/KEYSTORE_B64.txt
+            dist/SECRETS_TO_SAVE.txt
+          if-no-files-found: ignore
