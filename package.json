@@ -1,0 +1,16 @@
+{
+  "name": "parcel-office-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "اپ اندروید دفتر مرسولات (Capacitor + اسکنر ML Kit)",
+  "dependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest",
+    "@capacitor/filesystem": "latest",
+    "@capacitor/share": "latest",
+    "@capacitor-mlkit/barcode-scanning": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest"
+  }
+}

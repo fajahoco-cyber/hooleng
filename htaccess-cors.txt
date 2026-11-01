@@ -1,0 +1,17 @@
+# ===== این بلوک را در بالاترین قسمت فایل .htaccess سایت (قبل از بقیه‌ی خط‌ها) بچسبانید =====
+# برای اینکه اپ اندروید بتواند به سایت درخواست بفرستد (CORS)
+
+<IfModule mod_headers.c>
+  SetEnvIf Origin "^(https://localhost|http://localhost|capacitor://localhost)$" CORS_ORIGIN=$1
+  Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
+  Header always set Access-Control-Allow-Headers "Authorization, X-Auth-Token, Content-Type" env=CORS_ORIGIN
+  Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" env=CORS_ORIGIN
+  Header always set Access-Control-Max-Age "86400" env=CORS_ORIGIN
+  Header always set Vary "Origin" env=CORS_ORIGIN
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_METHOD} OPTIONS
+  RewriteRule ^ - [R=204,L]
+</IfModule>
